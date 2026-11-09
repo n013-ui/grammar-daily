@@ -43,6 +43,7 @@ function setup() {
   if (ss.getSheetByName(SH.SCHED).getLastRow() < 2) resetSchedule();
   var st = ss.getSheetByName(SH.STU);
   if (st.getLastRow() < 2) st.getRange(2, 1, 1, 4).setValues([['queena', 'Queena', '', '']]);
+  if (!ss.getSheetByName(TOOL)) setupTeacherTool();
 }
 function setupSheets() {
   var ss = SpreadsheetApp.getActive();
@@ -207,6 +208,7 @@ var API = {
     var lock = LockService.getScriptLock();
     lock.waitLock(15000);
     try {
+      if (p.mode === 'drill') return answerDrill(s, q, K, p);
       var ss = SpreadsheetApp.getActive(), now = new Date(), t = today(), gained = 0, correct, choice;
       var wsh = ss.getSheetByName(SH.WRONG), wv = wsh.getDataRange().getValues(), wrow = -1;
       for (var i = 1; i < wv.length; i++) {
@@ -515,7 +517,7 @@ function summary(s) {
     fixedCount: W.filter(function (w) { return w.status === '已訂正'; }).length,
     reviewCount: cfg.reviewCount,
     doneDays: days.filter(function (d) { return d.status === 'done'; }).length,
-    student: { sid: s.sid, name: s.name }, title: cfg.title
+    student: { sid: s.sid, name: s.name }, title: cfg.title, drill: drillCounts(s.sid)
   };
 }
 
@@ -535,4 +537,234 @@ function refreshStudent(s) {
 // 老師用：重新計算所有學生的點數（手動執行）
 function refreshAllStudents() {
   rows(SH.STU).forEach(function (r) { if (str(r[0])) refreshStudent({ sid: str(r[0]), name: str(r[1]) }); });
+}
+
+// ================= 考前特訓（學生）＋老師工具（錯題報告、考前練習卷） =================
+var LESSON_NAME = { L3: '第三課', L4: '第四課', ALL: '第三、四課' };
+function lessonKey(x) {
+  x = str(x);
+  if (/三|L3|^3$/.test(x)) return 'L3';
+  if (/四|L4|^4$/.test(x)) return 'L4';
+  return 'ALL';
+}
+function inLesson(q, lesson) { return lesson === 'ALL' || q.lesson === lesson; }
+function hashNum(s) { var h = 2166136261; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h; }
+
+// 某學生某課次的錯題資料：每題錯幾次、選過哪些答案、盲點；每個考點錯幾次
+function wrongProfile(sid, lesson, Q) {
+  var items = {}, kpw = {};
+  wrongItems(sid).forEach(function (w) {
+    var q = Q[w.qid];
+    if (!q || !inLesson(q, lesson)) return;
+    items[w.qid] = { qid: w.qid, count: w.count, status: w.status, hist: w.hist, attempts: w.attempts, added: w.addDay, choices: {}, traps: {} };
+  });
+  rows(SH.LOG).forEach(function (r) {
+    if (str(r[1]) !== sid || str(r[7]) !== '錯') return;
+    var qid = str(r[5]).split(/[#→]/)[0], q = Q[qid];
+    if (!q || !inLesson(q, lesson)) return;
+    if (q.kp) kpw[q.kp] = (kpw[q.kp] || 0) + 1;
+    var it = items[qid];
+    if (!it) return;
+    var c = str(r[9]) || str(r[6]);
+    if (c) it.choices[c] = (it.choices[c] || 0) + 1;
+    if (str(r[12])) it.traps[str(r[12])] = (it.traps[str(r[12])] || 0) + 1;
+  });
+  var list = Object.keys(items).map(function (k) { return items[k]; })
+    .sort(function (a, b) { return b.count - a.count || (a.qid < b.qid ? -1 : 1); });
+  return { items: list, kpw: kpw };
+}
+
+// 出題：錯過的題目（錯越多次越優先）＋同考點的其他題（錯越多的考點越多題，沒做過的優先）
+function buildDrill(sid, lesson, size, seed, Q) {
+  var prof = wrongProfile(sid, lesson, Q), picked = [], used = {}, seen = {};
+  rows(SH.LOG).forEach(function (r) { if (str(r[1]) === sid) seen[str(r[5]).split(/[#→]/)[0]] = 1; });
+  var nOrig = Math.min(prof.items.length, Math.max(Math.ceil(size * 0.6), size - 10));
+  prof.items.slice(0, nOrig).forEach(function (it) {
+    picked.push({ q: Q[it.qid], type: 'wrong', count: it.count }); used[it.qid] = 1;
+  });
+  var kps = Object.keys(prof.kpw).sort(function (a, b) { return prof.kpw[b] - prof.kpw[a]; });
+  var pools = {};
+  kps.forEach(function (kp) {
+    pools[kp] = Object.keys(Q).map(function (id) { return Q[id]; })
+      .filter(function (x) { return x.kp === kp && inLesson(x, lesson) && !x.passage && !used[x.id]; })
+      .sort(function (a, b) { return (seen[a.id] ? 1 : 0) - (seen[b.id] ? 1 : 0) || hashNum(seed + a.id) - hashNum(seed + b.id); });
+  });
+  var tickets = [];
+  kps.forEach(function (kp) { for (var i = 0; i < Math.min(prof.kpw[kp], 4); i++) tickets.push(kp); });
+  var guard = 0;
+  while (picked.length < size && tickets.length && guard++ < 500) {
+    var kp = tickets[guard % tickets.length], pool = pools[kp];
+    while (pool.length && used[pool[0].id]) pool.shift();
+    if (!pool.length) { tickets = tickets.filter(function (t) { return t !== kp; }); continue; }
+    var x = pool.shift(); used[x.id] = 1;
+    picked.push({ q: x, type: 'sibling', count: 0 });
+  }
+  picked.sort(function (a, b) { return hashNum(seed + a.q.id) - hashNum(seed + b.q.id); });
+  return { list: picked, profile: prof };
+}
+function drillCounts(sid) {
+  var Q = questionMap(), c = { L3: 0, L4: 0 };
+  wrongItems(sid).forEach(function (w) { var q = Q[w.qid]; if (q && c[q.lesson] != null) c[q.lesson]++; });
+  c.ALL = c.L3 + c.L4;
+  return c;
+}
+
+API.getDrill = function (p) {
+  var s = auth(p), Q = questionMap(), K = kpMap(), lesson = lessonKey(p.lesson);
+  var d = buildDrill(s.sid, lesson, 20, s.sid + '|' + today() + '|' + lesson, Q);
+  if (!d.list.length) throw new Error(LESSON_NAME[lesson] + '還沒有錯過的題目，不用特訓喔！');
+  var units = [];
+  d.list.forEach(function (it) { if (units.indexOf(it.q.unit) < 0) units.push(it.q.unit); });
+  return {
+    ok: true, title: '考前特訓｜' + LESSON_NAME[lesson], lesson: lesson,
+    units: unitsFor({ units: units, qids: [] }, Q), answered: {},
+    questions: d.list.map(function (it) {
+      var order = shuffledIdx(s.sid + '|drill|' + it.q.id + '|' + today());
+      return { id: it.q.id, q: it.q.q, passage: it.q.passage || '', opts: order.map(function (i) { return it.q.opts[i]; }),
+        unit: it.q.unit, kpName: (K[it.q.kp] || {}).name || '', drillType: it.type, wrongCount: it.count };
+    })
+  };
+};
+
+// 考前特訓作答：不計分；答錯一樣收進錯題本
+function answerDrill(s, q, K, p) {
+  var ss = SpreadsheetApp.getActive(), now = new Date();
+  var right = q.opts['ABCD'.indexOf(q.ans)], choice = String(p.choiceText || '');
+  var ci = q.opts.indexOf(choice), letter = ci >= 0 ? 'ABCD'.charAt(ci) : '';
+  var correct = choice === right, trap = correct ? '' : trapOf(q.traps, letter);
+  if (!correct) {
+    var wsh = ss.getSheetByName(SH.WRONG), wv = wsh.getDataRange().getValues(), wrow = -1;
+    for (var i = 1; i < wv.length; i++) if (str(wv[i][0]) === s.sid && str(wv[i][1]) === q.id && str(wv[i][3]) === '待訂正') { wrow = i + 1; break; }
+    if (wrow > 0) { wsh.getRange(wrow, 3).setValue((Number(wv[wrow - 1][2]) || 1) + 1); wsh.getRange(wrow, 6).setValue(now); }
+    else wsh.appendRow([s.sid, q.id, 1, '待訂正', now, now, 0, '']);
+  }
+  ss.getSheetByName(SH.LOG).appendRow([now, s.sid, s.name, 'drill', '', q.id, letter, correct ? '對' : '錯', 0, choice, right, q.kp, trap]);
+  recordAnalysis(s, q, letter, correct, trap, q.id, choice);
+  SpreadsheetApp.flush();
+  var sum = refreshStudent(s), k = K[q.kp] || {};
+  return { ok: true, correct: correct, ansText: right, exp: q.exp, gained: 0, points: sum.points, kpName: k.name || '', kpTip: k.tip || '', trap: trap };
+}
+
+// ---------- 老師工具：在「老師工具」工作表選學生、課次，勾選「產生」 ----------
+var TOOL = '老師工具', REPORT = '錯題報告', PAPER = '考前練習卷', KEYS = '練習卷解答';
+function setupTeacherTool() {
+  var ss = SpreadsheetApp.getActive(), sh = ss.getSheetByName(TOOL) || ss.insertSheet(TOOL);
+  sh.getRange(1, 1, 8, 2).setValues([
+    ['📊 老師工具：錯題報告＋考前練習卷', ''],
+    ['', ''],
+    ['學生（登入名稱）', ''],
+    ['課次', '第三課'],
+    ['練習卷題數', 30],
+    ['✅ 勾選這格就會產生 →', false],
+    ['狀態', '選好學生和課次後，勾選上面那格'],
+    ['說明', '產生後看「錯題報告」「考前練習卷」「練習卷解答」三個工作表；要列印就用「檔案 → 列印」選目前工作表。每次產生會覆蓋上一次的內容。']
+  ]);
+  sh.getRange(1, 1).setFontWeight('bold').setFontSize(14);
+  sh.getRange(3, 1, 6, 1).setFontWeight('bold');
+  sh.getRange(3, 2, 4, 1).setBackground('#fff8e1');
+  sh.setColumnWidth(1, 190); sh.setColumnWidth(2, 420);
+  sh.getRange(8, 2).setWrap(true);
+  var stu = ss.getSheetByName(SH.STU);
+  sh.getRange(3, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInRange(stu.getRange('A2:A'), true).build());
+  sh.getRange(4, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['第三課', '第四課', '兩課一起'], true).build());
+  sh.getRange(6, 2).insertCheckboxes();
+  var first = rows(SH.STU).filter(function (r) { return str(r[0]); })[0];
+  if (first) sh.getRange(3, 2).setValue(str(first[0]));
+  return true;
+}
+function onEdit(e) {
+  try {
+    var r = e && e.range;
+    if (!r || r.getSheet().getName() !== TOOL || r.getRow() !== 6 || r.getColumn() !== 2 || r.getValue() !== true) return;
+    var sh = r.getSheet();
+    sh.getRange(7, 2).setValue('產生中…');
+    var msg = teacherReportFromTool();
+    sh.getRange(7, 2).setValue(msg);
+  } catch (err) {
+    if (e && e.range) e.range.getSheet().getRange(7, 2).setValue('❌ ' + (err.message || err));
+  } finally {
+    if (e && e.range && e.range.getSheet().getName() === TOOL && e.range.getRow() === 6 && e.range.getColumn() === 2) e.range.setValue(false);
+  }
+}
+function teacherReportFromTool() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(TOOL), v = sh.getRange(3, 2, 3, 1).getValues();
+  return teacherReport(str(v[0][0]), str(v[1][0]), Number(v[2][0]) || 30);
+}
+function plain(html) {
+  return str(html).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+}
+function passagePlain(p) {
+  if (!p) return '';
+  var m = p.match(/^\[\[(\d+)\]\]/), cur = m ? m[1] : '';
+  return p.replace(/^\[\[\d+\]\]/, '').replace(/\{(\d+)\}/g, function (_, k) { return k === cur ? '【 ' + k + ' 】' : '( ' + k + ' )'; });
+}
+function teacherReport(who, lessonLabel, size) {
+  var ss = SpreadsheetApp.getActive(), Q = questionMap(), K = kpMap(), lesson = lessonKey(lessonLabel);
+  var s = auth({ sid: who });
+  var stamp = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm');
+  // ---- 考點總覽（這一課所有作答） ----
+  var B = {}, order = [];
+  rows(SH.LOG).forEach(function (r) {
+    if (str(r[1]) !== s.sid) return;
+    var qlabel = str(r[5]), q = Q[qlabel.split(/[#→]/)[0]];
+    if (!q || !q.kp || !inLesson(q, lesson)) return;
+    if (!B[q.kp]) { B[q.kp] = [s.sid, s.name, q.kp, (K[q.kp] || {}).name || q.kp, 0, 0, 0, '', '']; order.push(q.kp); }
+    B[q.kp] = blindRow(B[q.kp], str(r[7]) === '對', str(r[12]), qlabel, str(r[9]) || str(r[6]));
+  });
+  order.sort(function (a, b) { return B[b][6] - B[a][6] || B[b][5] - B[a][5]; });
+  var prof = wrongProfile(s.sid, lesson, Q);
+  var out = [];
+  out.push(['錯題分析報告｜' + s.name + '｜' + LESSON_NAME[lesson] + '｜產生時間 ' + stamp, '', '', '', '', '', '', '', '', '']);
+  out.push(['', '', '', '', '', '', '', '', '', '']);
+  out.push(['一、考點總覽（錯誤率高的在上面）', '', '', '', '', '', '', '', '', '']);
+  out.push(['考點', '作答數', '答錯數', '錯誤率', '盲點統計', '', '', '', '', '']);
+  if (!order.length) out.push(['（這一課還沒有作答紀錄）', '', '', '', '', '', '', '', '', '']);
+  order.forEach(function (kp) { var b = B[kp]; out.push([b[3], b[4], b[5], b[6], b[7], '', '', '', '', '']); });
+  out.push(['', '', '', '', '', '', '', '', '', '']);
+  out.push(['二、錯題清單（共 ' + prof.items.length + ' 題，錯越多次的在上面）', '', '', '', '', '', '', '', '', '']);
+  var h2 = out.length + 1;
+  out.push(['題目ID', '考點', '題目', '她選過的答案（次數）', '正確答案', '錯誤次數', '狀態', '回收紀錄', '盲點', '詳解']);
+  if (!prof.items.length) out.push(['（這一課沒有錯題）', '', '', '', '', '', '', '', '', '']);
+  prof.items.forEach(function (it) {
+    var q = Q[it.qid];
+    out.push([it.qid, (K[q.kp] || {}).name || q.kp, (q.passage ? '［克漏字］' + passagePlain(q.passage) + '\n' : '') + q.q,
+      Object.keys(it.choices).map(function (c) { return c + '×' + it.choices[c]; }).join('\n'),
+      '(' + q.ans + ') ' + q.opts['ABCD'.indexOf(q.ans)], it.count, it.status, it.hist,
+      Object.keys(it.traps).join('\n'), plain(q.exp)]);
+  });
+  var rep = ss.getSheetByName(REPORT) || ss.insertSheet(REPORT);
+  rep.clear();
+  rep.getRange(1, 1, out.length, 10).setValues(out).setWrap(true).setVerticalAlignment('top');
+  rep.getRange(1, 1).setFontWeight('bold').setFontSize(13);
+  var h1 = 4;
+  rep.getRange(3, 1).setFontWeight('bold'); rep.getRange(h2 - 1, 1).setFontWeight('bold');
+  rep.getRange(h1, 1, 1, 5).setFontWeight('bold').setBackground('#e3f1ef');
+  rep.getRange(h2, 1, 1, 10).setFontWeight('bold').setBackground('#e3f1ef');
+  if (order.length) rep.getRange(h1 + 1, 4, order.length, 1).setNumberFormat('0%');
+  [80, 160, 360, 160, 140, 60, 60, 70, 200, 320].forEach(function (w, i) { rep.setColumnWidth(i + 1, w); });
+
+  // ---- 考前練習卷＋解答 ----
+  var d = buildDrill(s.sid, lesson, Math.max(5, Math.min(size, 60)), s.sid + '|paper|' + stamp, Q);
+  var paper = [['考前練習卷｜' + LESSON_NAME[lesson] + '　　姓名：' + s.name + '　　日期：＿＿＿＿　　得分：＿＿＿＿', '']];
+  var keys = [['考前練習卷解答｜' + s.name + '｜' + LESSON_NAME[lesson] + '｜' + stamp, '', '', ''], ['題號', '答案', '考點', '詳解']];
+  d.list.forEach(function (it, i) {
+    var q = it.q, ord = shuffledIdx(s.sid + '|paper|' + q.id + '|' + stamp), opts = ord.map(function (j) { return q.opts[j]; });
+    var ansL = 'ABCD'.charAt(opts.indexOf(q.opts['ABCD'.indexOf(q.ans)]));
+    var body = (q.passage ? passagePlain(q.passage) + '\n\n' : '') + q.q.replace(/_{3,}/g, '＿＿＿＿') + '\n' +
+      opts.map(function (o, j) { return '(' + 'ABCD'.charAt(j) + ') ' + o; }).join('　　');
+    paper.push(['(　　) ' + (i + 1) + '.', body]);
+    keys.push([i + 1, ansL, (K[q.kp] || {}).name || q.kp, plain(q.exp) + (it.type === 'wrong' ? '　［她錯過這題 ' + it.count + ' 次］' : '')]);
+  });
+  var ps = ss.getSheetByName(PAPER) || ss.insertSheet(PAPER);
+  ps.clear();
+  ps.getRange(1, 1, paper.length, 2).setValues(paper).setWrap(true).setVerticalAlignment('top');
+  ps.getRange(1, 1).setFontWeight('bold').setFontSize(13);
+  ps.setColumnWidth(1, 90); ps.setColumnWidth(2, 720);
+  var ks = ss.getSheetByName(KEYS) || ss.insertSheet(KEYS);
+  ks.clear();
+  ks.getRange(1, 1, keys.length, 4).setValues(keys).setWrap(true).setVerticalAlignment('top');
+  ks.getRange(1, 1).setFontWeight('bold');
+  ks.getRange(2, 1, 1, 4).setFontWeight('bold').setBackground('#e3f1ef');
+  [50, 50, 180, 560].forEach(function (w, i) { ks.setColumnWidth(i + 1, w); });
+  return '✅ ' + stamp + ' 已產生：' + s.name + '／' + LESSON_NAME[lesson] + '，錯題 ' + prof.items.length + ' 題、練習卷 ' + d.list.length + ' 題';
 }

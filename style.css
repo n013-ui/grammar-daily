@@ -260,3 +260,10 @@ button.day:not(:disabled):hover { filter: brightness(.96); }
 .day.ahead { background: #eef4fb; }
 .dot.ahead { background: #eef4fb; border: 1px solid #a9c2e0; }
 .status.todo + .btn-row { margin-top: 10px; }
+
+/* 考前特訓 */
+.drill-card h3 { margin: 0; }
+.drill-btns .btn.drill { display: flex; flex-direction: column; align-items: center; gap: 2px; background: #fff4ec; border-color: #f2c4a4; color: #9a3412; }
+.drill-btns .btn.drill small { font-size: 12px; font-weight: 500; color: #b45309; }
+.drill-btns .btn.drill:disabled { opacity: .45; cursor: not-allowed; }
+.drill-btns { margin-top: 10px; } .drill-btns .btn.big { flex: 1 1 110px; }

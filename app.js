@@ -161,6 +161,17 @@
     }
     $("reviewCard").innerHTML = r;
 
+    // 考前特訓
+    var dc = res.drill || { L3: 0, L4: 0, ALL: 0 };
+    var g = '<h3>🎯 考前特訓</h3><p class="muted" style="margin:4px 0 0">把這一課<b>曾經錯過的題目</b>（包括已經訂正的）再練一遍，加上同觀念的其他題目。錯越多的觀念出越多題。不計分，適合段考前衝刺。</p>';
+    if (dc.ALL) {
+      g += '<div class="btn-row drill-btns">' + [["L3", "第三課"], ["L4", "第四課"], ["ALL", "兩課一起"]].map(function (x) {
+        return '<button class="btn drill big" data-drill="' + x[0] + '"' + (dc[x[0]] ? "" : " disabled") + ">" + x[1] +
+          '<small>錯過 ' + dc[x[0]] + " 題</small></button>";
+      }).join("") + "</div>";
+    } else g += '<p class="muted" style="margin:8px 0 0">還沒有錯過的題目。先做每日練習，答錯的題目會自動收進來。</p>';
+    $("drillCard").innerHTML = g;
+
     // 補做
     var miss = res.days.filter(function (d) { return d.date < t && (d.status === "todo" || d.status === "partial"); });
     var mk = $("makeupCard");
@@ -207,7 +218,7 @@
 
   // 按鈕（事件委派）
   document.addEventListener("click", function (e) {
-    var b = e.target.closest("[data-day],[data-redo],[data-result],[data-review],[data-book],[data-go]");
+    var b = e.target.closest("[data-day],[data-redo],[data-result],[data-review],[data-book],[data-go],[data-drill]");
     if (!b) return;
     if (b.dataset.go === "home") return goHome();
     if (b.dataset.day) return openDay(b.dataset.day, "daily");
@@ -215,6 +226,7 @@
     if (b.dataset.result) return openResult(b.dataset.result);
     if (b.dataset.review) return openReview();
     if (b.dataset.book) return openBook();
+    if (b.dataset.drill && !b.disabled) return openDrill(b.dataset.drill);
   });
 
   // ---------- 錯題本 ----------
@@ -261,6 +273,14 @@
       startQuiz();
     }).catch(fail);
   }
+  function openDrill(lesson) {
+    loading(true);
+    Api.call("getDrill", { lesson: lesson }).then(function (res) {
+      loading(false);
+      quiz = { mode: "drill", date: home.today, title: res.title, units: res.units, questions: res.questions, results: {}, idx: 0 };
+      startQuiz();
+    }).catch(fail);
+  }
   function unitsHtml(units) {
     return units.map(function (u) { return '<h3 class="unit-h">' + esc(u.lesson) + "｜" + esc(u.title) + "</h3>" + u.html; }).join("");
   }
@@ -285,10 +305,10 @@
     renderQ();
   }
   function renderQ() {
-    var q = quiz.questions[quiz.idx], n = quiz.questions.length, rv = quiz.mode === "review";
+    var q = quiz.questions[quiz.idx], n = quiz.questions.length, rv = quiz.mode === "review", dr = quiz.mode === "drill";
     $("quizCount").textContent = (rv ? "錯題 " : "第 ") + (quiz.idx + 1) + " / " + n + (rv ? "" : " 題");
     $("progressBar").style.width = (quiz.idx / n * 100) + "%";
-    $("progressBar").style.background = rv ? "var(--review)" : "";
+    $("progressBar").style.background = rv ? "var(--review)" : dr ? "#c2410c" : "";
     var meta = "";
     if (rv) {
       meta = '<div class="qbadges"><span class="badge">🔁 第 ' + (q.attempts + 1) + " 次回收練習</span>" +
@@ -296,7 +316,9 @@
         '<span class="badge bad">已錯 ' + q.wrongCount + " 次</span>" +
         (q.hist && q.hist.slice(-1) === "✗" ? '<span class="badge bad">上次又錯了</span>' : "") + "</div>";
     }
-    $("qSrc").textContent = (rv ? "錯題回收 · " : "") + (q.kpName || q.src || "");
+    if (dr) meta = '<div class="qbadges">' + (q.drillType === "wrong" ? '<span class="badge bad">🎯 你錯過這題 ' + q.wrongCount + " 次</span>"
+      : '<span class="badge">同觀念練習</span>') + "</div>";
+    $("qSrc").textContent = (rv ? "錯題回收 · " : dr ? "考前特訓 · " : "") + (q.kpName || q.src || "");
     $("qText").innerHTML = meta + passageHtml(q.passage) + qHtml(q.q);
     $("qOpts").innerHTML = q.opts.map(function (o, i) {
       var L = "ABCD"[i];
@@ -308,12 +330,13 @@
   }
   $("qOpts").addEventListener("click", function (e) {
     var b = e.target.closest(".opt"); if (!b || b.disabled) return;
-    var q = quiz.questions[quiz.idx], choice = b.dataset.c, rv = quiz.mode === "review";
+    var q = quiz.questions[quiz.idx], choice = b.dataset.c, rv = quiz.mode === "review", dr = quiz.mode === "drill";
     var all = $("qOpts").querySelectorAll(".opt");
     all.forEach(function (x) { x.disabled = true; });
     b.style.borderColor = "var(--primary)";
     var payload = { mode: quiz.mode, date: quiz.date, qid: q.id, choice: choice };
-    if (rv) { payload.vk = q.vk; payload.choiceText = q.opts["ABCD".indexOf(choice)]; }
+    if (rv) payload.vk = q.vk;
+    if (rv || dr) payload.choiceText = q.opts["ABCD".indexOf(choice)];
     Api.call("answer", payload).then(function (res) {
       var ansL = res.ansText != null ? "ABCD"[q.opts.indexOf(res.ansText)] : res.ans;
       quiz.results[q.id] = { choice: choice, correct: res.correct, ans: ansL, exp: res.exp, kpName: res.kpName, kpTip: res.kpTip, trap: res.trap };
@@ -328,6 +351,7 @@
       if (res.gained) head += "　+" + res.gained + " 點";
       var sub = "";
       if (!res.correct && !rv) sub = "已收進錯題本，明天起可以到錯題回收區練習";
+      if (dr) sub = res.correct ? "考前特訓不計分，觀念有記住就好 👍" : "已記到錯題本，考前再看一次詳解";
       if (!res.correct && rv) sub = "這題已錯 " + res.wrongCount + " 次，會留在錯題本，明天再換題練一次";
       if (res.correct && rv) sub = "已從錯題本移除。回收紀錄：" + res.hist;
       fb.innerHTML = '<div class="fb-head">' + head + (sub ? '<div style="font-size:13px;font-weight:500;color:var(--muted)">' + sub + "</div>" : "") +
@@ -359,15 +383,16 @@
 
   // ---------- 結果 ----------
   function renderResult(viewOnly) {
-    var total = quiz.questions.length, score = 0, rv = quiz.mode === "review";
+    var total = quiz.questions.length, score = 0, rv = quiz.mode === "review", dr = quiz.mode === "drill";
     quiz.questions.forEach(function (q) { var r = quiz.results[q.id]; if (r && r.correct) score++; });
-    $("resEyebrow").textContent = rv ? "錯題回收結果" : niceDate(quiz.date) + " · " + quiz.title;
+    $("resEyebrow").textContent = rv ? "錯題回收結果" : dr ? quiz.title + " 結果" : niceDate(quiz.date) + " · " + quiz.title;
     $("resScore").textContent = score;
     $("resTotal").textContent = total;
     document.querySelector(".score-ring").style.setProperty("--pct", (score / total * 100) + "%");
     var r = score / total;
     $("resMsg").textContent = r === 1 ? "全對！太強了 🎉" : r >= .8 ? "很棒，差一點就全對！" : r >= .6 ? "不錯，看看錯的題目解析吧" : "再接再厲，先把解析看懂 💪";
     $("resPoints").textContent = quiz.mode === "practice" ? "再練一次不計分，錯的題目一樣會收進錯題本。"
+      : dr ? "考前特訓不計分。錯的題目已記到錯題本，把下面的詳解看懂再去考試！"
       : rv ? "訂正成功 " + score + " 題，獲得 " + score + " 點。又錯的題目明天會再換題練一次。"
       : viewOnly ? "這一天答對 " + score + " 題，獲得 " + score + " 點。" : "今天獲得 " + score + " 點！答錯的題目明天起可以到錯題回收區練習。";
     $("resList").innerHTML = quiz.questions.map(function (q, i) {

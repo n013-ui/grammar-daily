@@ -12,14 +12,16 @@ window.DemoGas = (function () {
     function range(r, c, nr, nc) {
       var o = {
         getValues: function () { var out = []; for (var i = 0; i < nr; i++) { var row = []; for (var j = 0; j < nc; j++) row.push(cell(r + i, c + j)); out.push(row); } return out; },
-        setValues: function (v) { v.forEach(function (row, i) { row.forEach(function (x, j) { set(r + i, c + j, x); }); }); return o; },
-        setValue: function (x) { set(r, c, x); return o; },
-        clearContent: function () { for (var i = 0; i < nr; i++) for (var j = 0; j < nc; j++) if (sh.data[r + i - 1]) set(r + i, c + j, ""); return o; },
-        setNumberFormat: function () { return o; }, setFontWeight: function () { return o; }, setBackground: function () { return o; }, setNote: function () { return o; }
+        setValues: function (v) { v.forEach(function (row, i) { row.forEach(function (x, j) { set(r + i, c + j, x); }); }); return px; },
+        setValue: function (x) { set(r, c, x); return px; },
+        clearContent: function () { for (var i = 0; i < nr; i++) for (var j = 0; j < nc; j++) if (sh.data[r + i - 1]) set(r + i, c + j, ""); return px; },
+        getSheet: function () { return sh; }, getRow: function () { return r; }, getColumn: function () { return c; }, getValue: function () { return cell(r, c); }
       };
-      return o;
+      var px = new Proxy(o, { get: function (t, k) { return k in t ? t[k] : function () { return px; }; } });
+      return px;
     }
-    sh.getLastRow = lastRow; sh.getLastColumn = lastCol; sh.setFrozenRows = function () {};
+    sh.getLastRow = lastRow; sh.getLastColumn = lastCol; sh.setFrozenRows = function () {}; sh.setColumnWidth = function () {};
+    sh.getName = function () { return name; }; sh.clear = function () { sh.data = []; };
     sh.getRange = function (a, b, c, d) {
       if (typeof a === "string") return range(1, a.charCodeAt(0) - 64, Math.max(lastRow(), 1), 1);
       return range(a, b, c || 1, d || 1);
@@ -32,7 +34,8 @@ window.DemoGas = (function () {
   var sheets = {}, G = null, todayFn = null;
   var ss = { getSheetByName: function (n) { return sheets[n] || null; }, insertSheet: function (n) { return (sheets[n] = makeSheet(n)); } };
   var env = {
-    SpreadsheetApp: { getActive: function () { return ss; }, flush: function () {} },
+    SpreadsheetApp: { getActive: function () { return ss; }, flush: function () {},
+      newDataValidation: function () { var c = new Proxy({}, { get: function () { return function () { return c; }; } }); return c; } },
     LockService: { getScriptLock: function () { return { waitLock: function () {}, releaseLock: function () {} }; } },
     Utilities: { formatDate: function (d) { return new Date(d.getTime() + 8 * 3600e3).toISOString().slice(0, 10); } },
     ContentService: { createTextOutput: function (s) { return { setMimeType: function () { return s; } }; }, MimeType: { JSON: "json" } }
