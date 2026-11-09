@@ -42,7 +42,7 @@ function setup() {
   addMissingVariants();
   if (ss.getSheetByName(SH.SCHED).getLastRow() < 2) resetSchedule();
   var st = ss.getSheetByName(SH.STU);
-  if (st.getLastRow() < 2) st.getRange(2, 1, 1, 4).setValues([['11001', '試看同學', '801', '1']]);
+  if (st.getLastRow() < 2) st.getRange(2, 1, 1, 4).setValues([['queena', 'Queena', '', '']]);
 }
 function setupSheets() {
   var ss = SpreadsheetApp.getActive();
@@ -372,12 +372,13 @@ function settings() {
   return { title: str(m['標題'] || '英文文法每日練習'), reviewCount: Number(m['錯題回收題數']) || 10 };
 }
 
+// 只用一個登入名稱（不分大小寫），對「學生」表的學號或姓名欄都可以；不需要密碼
 function auth(p) {
-  var sid = str(p.sid), name = str(p.name);
-  if (!sid || !name) throw new Error('請輸入學號和姓名');
-  var r = rows(SH.STU).filter(function (x) { return str(x[0]) === sid; })[0];
-  if (!r || str(r[1]) !== name) throw new Error('找不到這個學號，或姓名不符，請找老師確認');
-  return { sid: sid, name: str(r[1]), cls: str(r[2]) };
+  var key = str(p.sid || p.name).toLowerCase();
+  if (!key) throw new Error('請輸入登入名稱');
+  var r = rows(SH.STU).filter(function (x) { return str(x[0]).toLowerCase() === key || str(x[1]).toLowerCase() === key; })[0];
+  if (!r) throw new Error('找不到這個登入名稱');
+  return { sid: str(r[0]), name: str(r[1]) || str(r[0]), cls: str(r[2]) };
 }
 
 function questionMap() {

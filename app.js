@@ -101,19 +101,19 @@
   // ---------- 登入 ----------
   $("loginForm").addEventListener("submit", function (e) {
     e.preventDefault();
-    var sid = $("inSid").value.trim(), name = $("inName").value.trim();
-    if (!sid || !name) return;
-    session = { sid: sid, name: name };
+    var sid = $("inSid").value.trim();
+    if (!sid) return;
+    session = { sid: sid, name: sid };
     $("loginErr").textContent = "";
     loading(true);
     Api.call("login").then(function (res) {
       loading(false);
-      session.name = res.student.name;
+      session.sid = res.student.sid; session.name = res.student.name;
       store(SKEY, session);
       renderHome(res);
     }).catch(function (err) { loading(false); session = null; $("loginErr").textContent = err.message; });
   });
-  $("logoutBtn").addEventListener("click", function () { session = null; store(SKEY, null); $("inSid").value = ""; $("inName").value = ""; show("vLogin"); });
+  $("logoutBtn").addEventListener("click", function () { session = null; store(SKEY, null); $("inSid").value = ""; show("vLogin"); });
 
   // ---------- 首頁 ----------
   function goHome() {
@@ -390,7 +390,7 @@
     sc.src = "demo-gas.js";
     sc.onload = function () {
       DemoApi.init().then(function () {
-        if (!session) { $("inSid").value = "11001"; $("inName").value = "試看同學"; }
+        if (!session) $("inSid").value = "queena";
         boot();
       }).catch(function (e) { alert("試看模式載入失敗：" + e.message); });
     };

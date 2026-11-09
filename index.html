@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 <div id="demoBar" class="demo-bar" hidden>
@@ -32,8 +32,7 @@
       <h1>每天 20 題，<br>文法穩穩進步</h1>
       <p class="muted">先讀文法說明，再練 20 題。答對一題得 1 點；答錯的題目會收進錯題本，隔天就能訂正。想多練也可以先做後面幾天的題目！</p>
       <form id="loginForm">
-        <label>學號<input id="inSid" inputmode="numeric" autocomplete="off" required></label>
-        <label>姓名<input id="inName" autocomplete="off" required></label>
+        <label>登入名稱<input id="inSid" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
         <button class="btn primary big" type="submit">進入練習</button>
         <p class="err" id="loginErr"></p>
       </form>
@@ -125,7 +124,7 @@
   </div>
 </main>
 
-<script src="config.js?v=3"></script>
-<script src="app.js?v=3"></script>
+<script src="config.js?v=4"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>
