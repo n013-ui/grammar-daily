@@ -2,7 +2,7 @@
   "use strict";
 
   var CFG = window.APP_CONFIG || {};
-  var LIVE = !!CFG.API_URL;
+  var DEMO = /[?&]demo=1/.test(location.search) || !CFG.API_URL;   // 網址加 ?demo=1 可強制試看模式
   var $ = function (id) { return document.getElementById(id); };
   var WEEK = ["日", "一", "二", "三", "四", "五", "六"];
 
@@ -17,6 +17,14 @@
   function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
   function toast(t) { var el = $("toast"); el.hidden = true; void el.offsetWidth; el.textContent = t; el.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(function () { el.hidden = true; }, 950); }
   function loading(on) { $("loading").hidden = !on; }
+  function histHtml(h) { return (h || "").split("").map(function (c) { return c === "✓" ? '<span class="h ok">✓</span>' : '<span class="h bad">✗</span>'; }).join(""); }
+  function shuffledIdx(seedStr) {   // 與 GAS 相同的固定亂數
+    var h = 2166136261;
+    for (var i = 0; i < seedStr.length; i++) { h ^= seedStr.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    var a = [0, 1, 2, 3];
+    for (var j = 3; j > 0; j--) { h = (Math.imul(h, 1103515245) + 12345) >>> 0; var r = h % (j + 1); var t = a[j]; a[j] = a[r]; a[r] = t; }
+    return a;
+  }
 
   // ---------- 後端：正式（GAS） ----------
   var LiveApi = {
@@ -30,17 +38,24 @@
     }
   };
 
-  // ---------- 後端：試看模式（瀏覽器內模擬，邏輯與 GAS 相同） ----------
+  // ---------- 後端：試看模式（瀏覽器內模擬，規則與 GAS 相同） ----------
   var DemoApi = (function () {
-    var D, KEY = "grammarDemo_v1";
+    var D, KEY = "grammarDemo_v2";
     function db() { return store(KEY) || { students: {} }; }
     function save(x) { store(KEY, x); }
     function today() { return $("demoDate").value; }
     function qmap() { var m = {}; D.questions.forEach(function (q) { m[q.id] = q; }); return m; }
     function umap() { var m = {}; D.units.forEach(function (u) { m[u.id] = u; }); return m; }
-    function stu(x, sid, name) {
-      if (!x.students[sid]) x.students[sid] = { name: name, points: 0, daily: {}, wrong: {} };
-      return x.students[sid];
+    function vars(id) { return ((D.variants || {})[id] || []).map(function (v) { return { q: v[0], opts: v[1], ans: v[2], exp: v[3] }; }); }
+    function pick(q, k, exact) {
+      var V = vars(q.id);
+      if (!V.length || k < 0) return { vk: -1, q: q.q, opts: q.opts, ans: q.ans, exp: q.exp };
+      var i = exact ? k : k % (V.length + 1), v = V[i];
+      return v ? { vk: i, q: v.q, opts: v.opts, ans: v.ans, exp: v.exp } : { vk: -1, q: q.q, opts: q.opts, ans: q.ans, exp: q.exp };
+    }
+    function stu(x) {
+      if (!x.students[session.sid]) x.students[session.sid] = { name: session.name, points: 0, daily: {}, wrong: [] };
+      return x.students[session.sid];
     }
     function pub(q) { return { id: q.id, q: q.q, opts: q.opts, src: q.src, unit: q.unit }; }
     function unitsFor(day, Q) {
@@ -49,18 +64,22 @@
       var U = umap();
       return ids.sort().map(function (id) { return U[id]; }).filter(Boolean);
     }
+    function pendingRow(s, qid) { return s.wrong.filter(function (w) { return w.qid === qid && w.status === "待訂正"; })[0]; }
     function summary(s) {
-      var t = today(), wd = parseDate(t).getDay();
+      var t = today();
       var days = D.schedule.map(function (d) {
         var a = s.daily[d.date] || {}, n = 0, sc = 0;
         d.qids.forEach(function (id) { if (a[id]) { n++; if (a[id].correct) sc++; } });
         var st = d.date > t ? "locked" : n >= d.qids.length ? "done" : n > 0 ? "partial" : "todo";
         return { date: d.date, title: d.title, total: d.qids.length, answered: n, score: sc, status: st };
       });
-      var wrong = Object.keys(s.wrong).filter(function (k) { return s.wrong[k].status === "pending"; }).length;
+      var pend = s.wrong.filter(function (w) { return w.status === "待訂正"; });
       return {
-        ok: true, today: t, points: s.points, wrongCount: wrong, days: days,
-        reviewOpen: D.settings.reviewDays.indexOf(wd) >= 0, reviewDays: D.settings.reviewDays,
+        ok: true, today: t, points: s.points, days: days, wrongCount: pend.length,
+        reviewReady: pend.filter(function (w) { return w.lastDay < t; }).length,
+        reviewWaiting: pend.filter(function (w) { return w.lastDay >= t; }).length,
+        fixedCount: s.wrong.filter(function (w) { return w.status === "已訂正"; }).length,
+        reviewCount: D.settings.reviewCount,
         doneDays: days.filter(function (d) { return d.status === "done"; }).length,
         student: { sid: session.sid, name: s.name }
       };
@@ -68,47 +87,61 @@
     var api = {
       call: function (action, data) {
         return new Promise(function (resolve, reject) {
-          setTimeout(function () {
-            try { resolve(api[action](data || {})); } catch (e) { reject(e); }
-          }, 120);
+          setTimeout(function () { try { resolve(api[action](data || {})); } catch (e) { reject(e); } }, 120);
         });
       },
-      login: function () { var x = db(); var s = stu(x, session.sid, session.name); save(x); return summary(s); },
-      summary: function () { var x = db(); return summary(stu(x, session.sid, session.name)); },
+      login: function () { var x = db(); var s = stu(x); save(x); return summary(s); },
+      summary: function () { return summary(stu(db())); },
       getDay: function (p) {
         var day = D.schedule.filter(function (d) { return d.date === p.date; })[0];
         if (!day) throw new Error("這一天沒有排練習");
         if (day.date > today()) throw new Error("這一天還沒開放");
-        var Q = qmap(), x = db(), s = stu(x, session.sid, session.name), a = s.daily[day.date] || {};
-        var answered = {};
+        var Q = qmap(), s = stu(db()), a = s.daily[day.date] || {}, answered = {};
         day.qids.forEach(function (id) { if (a[id]) answered[id] = { choice: a[id].choice, correct: a[id].correct, ans: Q[id].ans, exp: Q[id].exp }; });
         return { ok: true, date: day.date, title: day.title, units: unitsFor(day, Q),
           questions: day.qids.map(function (id) { return pub(Q[id]); }), answered: answered };
       },
       getReview: function () {
-        if (!summary(stu(db(), session.sid, session.name)).reviewOpen) throw new Error("錯題回收在週末開放");
-        var Q = qmap(), x = db(), s = stu(x, session.sid, session.name);
-        var ids = Object.keys(s.wrong).filter(function (k) { return s.wrong[k].status === "pending"; })
-          .sort(function (a, b) { return s.wrong[a].t - s.wrong[b].t; }).slice(0, D.settings.reviewCount);
-        return { ok: true, title: "週末錯題回收", units: unitsFor({ units: [], qids: ids }, Q),
-          questions: ids.map(function (id) { return pub(Q[id]); }), answered: {} };
+        var Q = qmap(), s = stu(db()), t = today();
+        var items = s.wrong.filter(function (w) { return w.status === "待訂正" && w.lastDay < t; }).slice(0, D.settings.reviewCount);
+        return { ok: true, title: "錯題回收區", units: unitsFor({ units: [], qids: items.map(function (w) { return w.qid; }) }, Q),
+          answered: {}, questions: items.map(function (w) {
+            var src = pick(Q[w.qid], w.attempts), order = shuffledIdx(session.sid + "|" + w.qid + "|" + w.attempts);
+            return { id: w.qid, vk: src.vk, q: src.q, opts: order.map(function (i) { return src.opts[i]; }), unit: Q[w.qid].unit,
+              src: src.vk >= 0 ? "變化題" : "原題", wrongCount: w.count, attempts: w.attempts, hist: w.hist };
+          }) };
+      },
+      wrongBook: function () {
+        var Q = qmap(), s = stu(db()), t = today();
+        var items = s.wrong.map(function (w) {
+          return { qid: w.qid, q: Q[w.qid].q, count: w.count, status: w.status, added: w.addDay, attempts: w.attempts, hist: w.hist,
+            ready: w.status === "待訂正" && w.lastDay < t };
+        });
+        items.sort(function (a, b) { return (a.status === "待訂正" ? 0 : 1) - (b.status === "待訂正" ? 0 : 1); });
+        return { ok: true, items: items };
       },
       answer: function (p) {
         var Q = qmap(), q = Q[p.qid]; if (!q) throw new Error("找不到題目");
-        var x = db(), s = stu(x, session.sid, session.name), correct = p.choice === q.ans, gained = 0;
+        var x = db(), s = stu(x), t = today(), w = pendingRow(s, p.qid);
+        if (p.mode === "review") {
+          if (!w) throw new Error("這題已經不在錯題本裡了");
+          if (w.lastDay >= t) throw new Error("這題今天剛錯過，明天才能練");
+          var src = pick(q, Number(p.vk), true), right = src.opts["ABCD".indexOf(src.ans)], ok = p.choiceText === right, g = 0;
+          w.attempts++; w.hist += ok ? "✓" : "✗"; w.lastDay = t;
+          if (ok) { w.status = "已訂正"; g = 1; } else w.count++;
+          s.points += g; save(x);
+          return { ok: true, correct: ok, ansText: right, exp: src.exp, gained: g, points: s.points, wrongCount: w.count, hist: w.hist };
+        }
+        var correct = p.choice === q.ans, gained = 0;
         if (p.mode === "daily") {
           var a = s.daily[p.date] = s.daily[p.date] || {};
           if (a[p.qid]) return { ok: true, correct: a[p.qid].correct, ans: q.ans, exp: q.exp, gained: 0, points: s.points, repeat: true };
           a[p.qid] = { choice: p.choice, correct: correct };
           if (correct) gained = 1;
         }
-        if (p.mode === "review") {
-          var w = s.wrong[p.qid];
-          if (w && w.status === "pending") { if (correct) { w.status = "fixed"; gained = 1; } else w.count++; }
-        } else if (!correct) {
-          var ww = s.wrong[p.qid];
-          if (!ww || ww.status !== "pending") s.wrong[p.qid] = { count: 1, status: "pending", t: Date.now() };
-          else ww.count++;
+        if (!correct) {
+          if (w) { w.count++; w.lastDay = t; }
+          else s.wrong.push({ qid: p.qid, count: 1, status: "待訂正", addDay: t, lastDay: t, attempts: 0, hist: "" });
         }
         s.points += gained; save(x);
         return { ok: true, correct: correct, ans: q.ans, exp: q.exp, gained: gained, points: s.points };
@@ -130,15 +163,16 @@
     return api;
   })();
 
-  var Api = LIVE ? LiveApi : DemoApi;
+  var Api = DEMO ? DemoApi : LiveApi;
 
   // ---------- 狀態 ----------
-  var session = store("grammarSession");
+  var SKEY = DEMO ? "grammarSessionDemo" : "grammarSession";
+  var session = store(SKEY);
   var home = null;   // 最近一次 summary
   var quiz = null;   // { mode, date, title, units, questions, idx, results }
 
   function show(v) {
-    ["vLogin", "vHome", "vNotes", "vQuiz", "vResult"].forEach(function (id) { $(id).hidden = id !== v; });
+    ["vLogin", "vHome", "vNotes", "vQuiz", "vResult", "vBook"].forEach(function (id) { $(id).hidden = id !== v; });
     $("who").hidden = !session || v === "vLogin";
     window.scrollTo(0, 0);
   }
@@ -156,11 +190,11 @@
     Api.call("login").then(function (res) {
       loading(false);
       session.name = res.student.name;
-      store("grammarSession", session);
+      store(SKEY, session);
       renderHome(res);
     }).catch(function (err) { loading(false); session = null; $("loginErr").textContent = err.message; });
   });
-  $("logoutBtn").addEventListener("click", function () { session = null; store("grammarSession", null); $("inSid").value = ""; $("inName").value = ""; show("vLogin"); });
+  $("logoutBtn").addEventListener("click", function () { session = null; store(SKEY, null); $("inSid").value = ""; $("inName").value = ""; show("vLogin"); });
 
   // ---------- 首頁 ----------
   function goHome() {
@@ -173,38 +207,38 @@
     $("whoName").textContent = res.student.name;
     setPoints(res.points);
     $("statDone").textContent = res.doneDays + " / " + res.days.length;
-    $("statWrong").textContent = res.wrongCount;
+    $("statFixed").textContent = res.fixedCount;
 
     var t = res.today, todayDay = res.days.filter(function (d) { return d.date === t; })[0];
-    var card = $("todayCard"), h = "";
-    card.className = "card today-card";
+    var h = "", wd = parseDate(t).getDay();
     if (todayDay) {
       h += '<div class="eyebrow">今天 ' + niceDate(t) + " · 第 " + (res.days.indexOf(todayDay) + 1) + " 天</div>";
       h += "<h2>" + esc(todayDay.title) + "</h2>";
       h += statusBadge(todayDay);
       h += '<div class="btn-row">' + dayButtons(todayDay) + "</div>";
-    } else if (res.reviewOpen) {
-      card.className += " review";
-      h += '<div class="eyebrow" style="color:var(--review)">今天 ' + niceDate(t) + " · 週末</div>";
-      h += "<h2>錯題回收時間 ♻️</h2>";
-      if (res.wrongCount > 0) {
-        h += '<span class="status review">錯題本還有 ' + res.wrongCount + " 題</span>";
-        h += '<p class="muted">把這週答錯的題目再做一次，答對就從錯題本移除，並得 1 點。</p>';
-        h += '<button class="btn review big" data-review="1">開始錯題回收（最多 ' + Math.min(10, res.wrongCount) + " 題）</button>";
-      } else {
-        h += '<p class="muted">錯題本是空的，太厲害了！可以從下方月曆補做還沒完成的練習。</p>';
-      }
     } else {
       var first = res.days[0], last = res.days[res.days.length - 1];
       h += '<div class="eyebrow">今天 ' + niceDate(t) + "</div>";
-      if (first && t < first.date) h += "<h2>練習從 " + niceDate(first.date) + " 開始</h2><p class=\"muted\">準備好了嗎？到時候每天 10 題，答對一題得 1 點！</p>";
-      else if (last && t > last.date) h += "<h2>本月練習已全部結束 🎉</h2><p class=\"muted\">可以從月曆回顧每天的題目。</p>";
-      else h += "<h2>今天沒有排練習</h2><p class=\"muted\">可以從下方月曆補做還沒完成的練習。</p>";
+      if (first && t < first.date) h += "<h2>練習從 " + niceDate(first.date) + " 開始</h2><p class=\"muted\">到時候每天 10 題，答對一題得 1 點！</p>";
+      else if (last && t > last.date) h += "<h2>本月練習已全部結束 🎉</h2><p class=\"muted\">可以到錯題回收區把錯題清光，或從月曆回顧題目。</p>";
+      else if (wd === 0 || wd === 6) h += "<h2>週末沒有每日十題 ☕</h2><p class=\"muted\">可以到下面的錯題回收區練習，或補做還沒完成的天數。</p>";
+      else h += "<h2>今天沒有排練習</h2><p class=\"muted\">可以到錯題回收區練習，或補做還沒完成的天數。</p>";
     }
-    if (!res.reviewOpen && res.wrongCount > 0 && todayDay) {
-      h += '<p class="muted" style="margin:12px 0 0;font-size:14px">📕 錯題本有 ' + res.wrongCount + " 題，週末開放錯題回收。</p>";
+    $("todayCard").innerHTML = h;
+
+    // 錯題回收區
+    var r = "<h3>♻️ 錯題回收區</h3>";
+    r += '<div class="review-nums"><span>現在可練 <b>' + res.reviewReady + "</b> 題</span><span>明天開放 <b>" + res.reviewWaiting +
+      "</b> 題</span><span>已訂正 <b>" + res.fixedCount + "</b> 題</span></div>";
+    if (res.reviewReady > 0) {
+      r += '<p class="muted" style="margin:6px 0 0">以前答錯的題目會換個句子考同樣的觀念，答對就訂正成功，+1 點。</p>';
+      r += '<div class="btn-row"><button class="btn review big" data-review="1">開始錯題回收（' + Math.min(res.reviewCount || 10, res.reviewReady) +
+        ' 題）</button><button class="btn big" data-book="1">看錯題本</button></div>';
+    } else {
+      r += '<p class="muted" style="margin:6px 0 0">' + (res.reviewWaiting > 0 ? "今天答錯的題目，明天就能來這裡練習。" : res.fixedCount > 0 ? "錯題都訂正完了，太厲害了！" : "答錯的題目會收進這裡，隔天就能練習。") + "</p>";
+      if (res.wrongCount + res.fixedCount > 0) r += '<button class="btn big" data-book="1">看錯題本</button>';
     }
-    card.innerHTML = h;
+    $("reviewCard").innerHTML = r;
 
     // 補做
     var miss = res.days.filter(function (d) { return d.date < t && (d.status === "todo" || d.status === "partial"); });
@@ -222,8 +256,8 @@
   }
   function statusBadge(d) {
     if (d.status === "done") return '<span class="status done">已完成 · 答對 ' + d.score + " / " + d.total + "</span>";
-    if (d.status === "partial") return '<span class="status partial">做到第 ' + d.answered + " 題 · 先讀文法再繼續</span>";
-    return '<span class="status todo">尚未開始 · 10 題</span>';
+    if (d.status === "partial") return '<span class="status partial">做到第 ' + d.answered + " 題</span>";
+    return '<span class="status todo">尚未開始 · ' + d.total + " 題</span>";
   }
   function dayButtons(d) {
     if (d.status === "done") return '<button class="btn big" data-result="' + d.date + '">看今天的解析</button><button class="btn primary big" data-redo="' + d.date + '">再練一次（不計分）</button>';
@@ -236,36 +270,50 @@
     var first = new Date(y, m, 1), n = new Date(y, m + 1, 0).getDate(), h = "";
     for (var i = 0; i < first.getDay(); i++) h += '<div class="day blank"></div>';
     for (var dd = 1; dd <= n; dd++) {
-      var ds = fmtDate(new Date(y, m, dd)), wd = new Date(y, m, dd).getDay(), d = byDate[ds];
-      var cls = "day", sub = "", attr = "", isToday = ds === res.today;
+      var ds = fmtDate(new Date(y, m, dd)), d = byDate[ds];
+      var cls = "day", sub = "", attr = "";
       if (d) {
         cls += " " + d.status;
         sub = d.status === "done" ? d.score + "/" + d.total : d.status === "partial" ? d.answered + "/" + d.total : d.status === "locked" ? "" : "待做";
         if (d.status !== "locked") attr = d.status === "done" ? ' data-result="' + ds + '"' : ' data-day="' + ds + '"';
-      } else if (res.reviewDays.indexOf(wd) >= 0 && res.days.length && ds > res.days[0].date) {
-        cls += " review"; sub = "錯題";
-        if (isToday && res.reviewOpen && res.wrongCount > 0) attr = ' data-review="1"';
-        if (ds > res.today) cls += " locked";
       } else cls += " locked";
-      if (isToday) cls += " today";
+      if (ds === res.today) cls += " today";
       h += attr ? '<button class="' + cls + '"' + attr + ">" + dd + "<small>" + sub + "</small></button>"
                 : '<div class="' + cls + '">' + dd + "<small>" + sub + "</small></div>";
     }
     $("cal").innerHTML = h;
   }
 
-  // 首頁按鈕（事件委派）
+  // 按鈕（事件委派）
   document.addEventListener("click", function (e) {
-    var b = e.target.closest("[data-day],[data-redo],[data-result],[data-review],[data-go]");
+    var b = e.target.closest("[data-day],[data-redo],[data-result],[data-review],[data-book],[data-go]");
     if (!b) return;
     if (b.dataset.go === "home") return goHome();
     if (b.dataset.day) return openDay(b.dataset.day, "daily");
     if (b.dataset.redo) return openDay(b.dataset.redo, "practice");
     if (b.dataset.result) return openResult(b.dataset.result);
     if (b.dataset.review) return openReview();
+    if (b.dataset.book) return openBook();
   });
 
-  // ---------- 開始一天的練習 ----------
+  // ---------- 錯題本 ----------
+  function openBook() {
+    loading(true);
+    Api.call("wrongBook").then(function (res) {
+      loading(false);
+      $("bookList").innerHTML = res.items.length ? res.items.map(function (w) {
+        var st = w.status === "已訂正" ? '<span class="st fixed">已訂正</span>'
+          : w.ready ? '<span class="st ready">可以練習</span>' : '<span class="st pending">明天開放</span>';
+        var again = w.hist && w.hist.slice(-1) === "✗" && w.status !== "已訂正" ? '<span class="badge bad">上次又錯了</span>' : "";
+        return '<div class="book-item' + (w.status === "已訂正" ? " fixed" : "") + '"><div class="bq">' + qHtml(w.q) + '</div><div class="bmeta">' + st + again +
+          "<span>錯 " + w.count + " 次</span>" + (w.attempts ? "<span>回收紀錄 " + histHtml(w.hist) + "</span>" : "<span>還沒回收練習過</span>") +
+          '<span class="muted">' + (w.added ? niceDate(w.added) + " 加入" : "") + "</span></div></div>";
+      }).join("") : '<p class="muted">錯題本是空的！</p>';
+      show("vBook");
+    }).catch(fail);
+  }
+
+  // ---------- 開始練習 ----------
   function openDay(date, mode) {
     loading(true);
     Api.call("getDay", { date: date }).then(function (res) {
@@ -287,7 +335,7 @@
     loading(true);
     Api.call("getReview").then(function (res) {
       loading(false);
-      if (!res.questions.length) { alert("錯題本是空的！"); return goHome(); }
+      if (!res.questions.length) { alert("現在沒有可以練習的錯題！"); return goHome(); }
       quiz = { mode: "review", date: home.today, title: res.title, units: res.units, questions: res.questions, results: {}, idx: 0 };
       startQuiz();
     }).catch(fail);
@@ -315,12 +363,19 @@
     renderQ();
   }
   function renderQ() {
-    var q = quiz.questions[quiz.idx], n = quiz.questions.length;
-    $("quizCount").textContent = (quiz.mode === "review" ? "錯題 " : "第 ") + (quiz.idx + 1) + " / " + n + (quiz.mode === "review" ? "" : " 題");
+    var q = quiz.questions[quiz.idx], n = quiz.questions.length, rv = quiz.mode === "review";
+    $("quizCount").textContent = (rv ? "錯題 " : "第 ") + (quiz.idx + 1) + " / " + n + (rv ? "" : " 題");
     $("progressBar").style.width = (quiz.idx / n * 100) + "%";
-    $("progressBar").style.background = quiz.mode === "review" ? "var(--review)" : "";
-    $("qSrc").textContent = q.id.slice(0, 2) + " · " + q.src;
-    $("qText").innerHTML = qHtml(q.q);
+    $("progressBar").style.background = rv ? "var(--review)" : "";
+    var meta = "";
+    if (rv) {
+      meta = '<div class="qbadges"><span class="badge">🔁 第 ' + (q.attempts + 1) + " 次回收練習</span>" +
+        (q.src === "變化題" ? '<span class="badge">換句話考同觀念</span>' : '<span class="badge">原題再挑戰（選項已換位置）</span>') +
+        '<span class="badge bad">已錯 ' + q.wrongCount + " 次</span>" +
+        (q.hist && q.hist.slice(-1) === "✗" ? '<span class="badge bad">上次又錯了</span>' : "") + "</div>";
+    }
+    $("qSrc").textContent = rv ? "錯題回收 · " + q.id.slice(0, 2) : q.id.slice(0, 2) + " · " + q.src;
+    $("qText").innerHTML = meta + qHtml(q.q);
     $("qOpts").innerHTML = q.opts.map(function (o, i) {
       var L = "ABCD"[i];
       return '<button class="opt" data-c="' + L + '"><span class="letter">' + L + "</span><span>" + esc(o) + "</span></button>";
@@ -331,24 +386,30 @@
   }
   $("qOpts").addEventListener("click", function (e) {
     var b = e.target.closest(".opt"); if (!b || b.disabled) return;
-    var q = quiz.questions[quiz.idx], choice = b.dataset.c;
+    var q = quiz.questions[quiz.idx], choice = b.dataset.c, rv = quiz.mode === "review";
     var all = $("qOpts").querySelectorAll(".opt");
     all.forEach(function (x) { x.disabled = true; });
     b.style.borderColor = "var(--primary)";
-    Api.call("answer", { mode: quiz.mode, date: quiz.date, qid: q.id, choice: choice }).then(function (res) {
-      quiz.results[q.id] = { choice: choice, correct: res.correct, ans: res.ans, exp: res.exp };
+    var payload = { mode: quiz.mode, date: quiz.date, qid: q.id, choice: choice };
+    if (rv) { payload.vk = q.vk; payload.choiceText = q.opts["ABCD".indexOf(choice)]; }
+    Api.call("answer", payload).then(function (res) {
+      var ansL = res.ansText != null ? "ABCD"[q.opts.indexOf(res.ansText)] : res.ans;
+      quiz.results[q.id] = { choice: choice, correct: res.correct, ans: ansL, exp: res.exp };
       b.style.borderColor = "";
       all.forEach(function (x) {
-        if (x.dataset.c === res.ans) x.classList.add("correct");
+        if (x.dataset.c === ansL) x.classList.add("correct");
         else if (x.dataset.c === choice) x.classList.add("wrong");
       });
       var fb = $("qFeedback");
       fb.className = "feedback " + (res.correct ? "ok" : "bad");
-      var head = res.correct ? (quiz.mode === "review" ? "訂正成功！" : "答對了！") : "答錯了，正確答案是 (" + res.ans + ")";
+      var head = res.correct ? (rv ? "訂正成功！" : "答對了！") : (rv ? "又錯了！" : "答錯了，") + "正確答案是 (" + ansL + ")";
       if (res.gained) head += "　+" + res.gained + " 點";
-      if (!res.correct && quiz.mode !== "review") head += '<div style="font-size:13px;font-weight:500;color:var(--muted)">已收進錯題本，週末再來挑戰</div>';
-      if (!res.correct && quiz.mode === "review") head += '<div style="font-size:13px;font-weight:500;color:var(--muted)">這題會留在錯題本，下次再試一次</div>';
-      fb.innerHTML = '<div class="fb-head">' + head + '</div><div class="exp">💬 ' + res.exp + "</div>";
+      var sub = "";
+      if (!res.correct && !rv) sub = "已收進錯題本，明天起可以到錯題回收區練習";
+      if (!res.correct && rv) sub = "這題已錯 " + res.wrongCount + " 次，會留在錯題本，明天再換題練一次";
+      if (res.correct && rv) sub = "已從錯題本移除。回收紀錄：" + res.hist;
+      fb.innerHTML = '<div class="fb-head">' + head + (sub ? '<div style="font-size:13px;font-weight:500;color:var(--muted)">' + sub + "</div>" : "") +
+        '</div><div class="exp">💬 ' + res.exp + "</div>";
       fb.hidden = false;
       if (res.gained) toast("+" + res.gained + " 點 ⭐");
       setPoints(res.points);
@@ -360,7 +421,7 @@
     }).catch(function (err) {
       all.forEach(function (x) { x.disabled = false; });
       b.style.borderColor = "";
-      alert("送出失敗，請再按一次：" + err.message);
+      alert("送出失敗：" + err.message);
     });
   });
   $("nextBtn").addEventListener("click", function () {
@@ -376,20 +437,19 @@
 
   // ---------- 結果 ----------
   function renderResult(viewOnly) {
-    var total = quiz.questions.length, score = 0;
+    var total = quiz.questions.length, score = 0, rv = quiz.mode === "review";
     quiz.questions.forEach(function (q) { var r = quiz.results[q.id]; if (r && r.correct) score++; });
-    $("resEyebrow").textContent = quiz.mode === "review" ? "錯題回收結果" : niceDate(quiz.date) + " · " + quiz.title;
+    $("resEyebrow").textContent = rv ? "錯題回收結果" : niceDate(quiz.date) + " · " + quiz.title;
     $("resScore").textContent = score;
     $("resTotal").textContent = total;
     document.querySelector(".score-ring").style.setProperty("--pct", (score / total * 100) + "%");
     var r = score / total;
     $("resMsg").textContent = r === 1 ? "全對！太強了 🎉" : r >= .8 ? "很棒，差一點就全對！" : r >= .6 ? "不錯，看看錯的題目解析吧" : "再接再厲，先把解析看懂 💪";
     $("resPoints").textContent = quiz.mode === "practice" ? "再練一次不計分，錯的題目一樣會收進錯題本。"
-      : quiz.mode === "review" ? "訂正成功 " + score + " 題，獲得 " + score + " 點。"
-      : viewOnly ? "這一天答對 " + score + " 題，獲得 " + score + " 點。" : "今天獲得 " + score + " 點！答錯的題目已收進錯題本。";
+      : rv ? "訂正成功 " + score + " 題，獲得 " + score + " 點。又錯的題目明天會再換題練一次。"
+      : viewOnly ? "這一天答對 " + score + " 題，獲得 " + score + " 點。" : "今天獲得 " + score + " 點！答錯的題目明天起可以到錯題回收區練習。";
     $("resList").innerHTML = quiz.questions.map(function (q, i) {
-      var x = quiz.results[q.id] || {};
-      var ok = x.correct;
+      var x = quiz.results[q.id] || {}, ok = x.correct;
       return '<details class="res-item"' + (ok ? "" : " open") + "><summary>" +
         '<span class="mark ' + (ok ? "ok" : "bad") + '">' + (ok ? "○" : "✕") + "</span>" +
         '<span class="res-q">' + (i + 1) + ". " + qHtml(q.q) + "<br><small class=\"muted\">你的答案 (" + (x.choice || "-") + ") " +
@@ -401,17 +461,20 @@
 
   // ---------- 啟動 ----------
   function boot() {
-    if (!LIVE) DemoApi.init();
-    if (session) { goHome(); } else show("vLogin");
+    if (DEMO) DemoApi.init();
+    if (session) goHome(); else show("vLogin");
   }
-  if (!LIVE) {
-    var s = document.createElement("script");
-    s.src = "data.js";
-    s.onload = function () {
-      if (window.GRAMMAR_DATA.settings.title) $("appTitle").textContent = window.GRAMMAR_DATA.settings.title;
-      if (!session) { $("inSid").value = "11001"; $("inName").value = "試看同學"; }
-      boot();
-    };
-    document.head.appendChild(s);
+  if (DEMO) {
+    var n = 0;
+    ["data.js", "variants.js"].forEach(function (f, i) {
+      var s = document.createElement("script");
+      s.src = f; s.async = false;
+      s.onload = function () {
+        if (++n < 2) return;
+        if (!session) { $("inSid").value = "11001"; $("inName").value = "試看同學"; }
+        boot();
+      };
+      document.head.appendChild(s);
+    });
   } else boot();
 })();

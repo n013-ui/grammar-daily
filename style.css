@@ -201,6 +201,26 @@ button.day:not(:disabled):hover { filter: brightness(.96); }
 .res-item .res-q { flex: 1; }
 .res-item .res-exp { margin: 8px 0 0 32px; font-size: 15px; background: #f7f5f0; padding: 10px 12px; border-radius: 10px; }
 
+/* 錯題回收區 */
+.review-card { border-left: 6px solid var(--review); }
+.review-card h3 { margin: 0 0 6px; font-size: 18px; color: var(--review); }
+.review-nums { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; color: var(--muted); margin-bottom: 4px; }
+.review-nums b { color: var(--ink); font-size: 18px; }
+.qbadges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.badge { font-size: 12px; padding: 2px 10px; border-radius: 999px; background: var(--review-soft); color: var(--review); font-weight: 500; }
+.badge.bad { background: var(--bad-soft); color: var(--bad); }
+.h { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; font-size: 12px; font-weight: 900; margin-right: 2px; color: #fff; }
+.h.ok { background: var(--ok); } .h.bad { background: var(--bad); }
+.book-legend { font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+.book-item { border-top: 1px solid var(--line); padding: 12px 0; }
+.book-item .bq { font-size: 15px; margin-bottom: 6px; }
+.book-item .bmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; color: var(--muted); }
+.book-item.fixed { opacity: .65; }
+.st { padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.st.pending { background: var(--bad-soft); color: var(--bad); }
+.st.ready { background: var(--review-soft); color: var(--review); }
+.st.fixed { background: var(--ok-soft); color: var(--ok); }
+
 /* 其他 */
 .loading { position: fixed; inset: 0; background: rgba(244,241,234,.6); display: grid; place-items: center; z-index: 50; }
 .spinner { width: 40px; height: 40px; border-radius: 50%; border: 4px solid #d9d2c3; border-top-color: var(--primary); animation: spin .8s linear infinite; }

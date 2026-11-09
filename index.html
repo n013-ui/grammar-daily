@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
 <div id="demoBar" class="demo-bar" hidden>
@@ -43,9 +43,10 @@
   <!-- 首頁 -->
   <section id="vHome" class="view" hidden>
     <div id="todayCard" class="card today-card"></div>
+    <div id="reviewCard" class="card review-card"></div>
     <div class="grid2">
       <div class="card stat"><div class="stat-num" id="statDone">0</div><div class="muted">已完成天數</div></div>
-      <div class="card stat"><div class="stat-num" id="statWrong">0</div><div class="muted">錯題待訂正</div></div>
+      <div class="card stat"><div class="stat-num" id="statFixed">0</div><div class="muted">已訂正錯題</div></div>
     </div>
     <div id="makeupCard" class="card" hidden></div>
     <div class="card">
@@ -54,8 +55,19 @@
       <div class="cal" id="cal"></div>
       <div class="legend">
         <span><i class="dot done"></i>完成</span><span><i class="dot partial"></i>做一半</span>
-        <span><i class="dot todo"></i>待完成</span><span><i class="dot review"></i>錯題回收日</span>
+        <span><i class="dot todo"></i>待完成</span>
       </div>
+    </div>
+  </section>
+
+  <!-- 錯題本 -->
+  <section id="vBook" class="view" hidden>
+    <button class="link back" data-go="home">← 回首頁</button>
+    <div class="card">
+      <h2 style="margin:0 0 4px">📕 我的錯題本</h2>
+      <p class="muted" style="margin:0">答錯的題目隔天就能到錯題回收區練習，會出「考同樣觀念、換個句子」的變化題。答對就算訂正成功（+1 點）；又錯的話，隔天再練一次。</p>
+      <div class="book-legend"><span class="h ok">✓</span>回收時答對　<span class="h bad">✗</span>回收時又錯了</div>
+      <div id="bookList"></div>
     </div>
   </section>
 
@@ -113,7 +125,7 @@
   </div>
 </main>
 
-<script src="config.js"></script>
-<script src="app.js"></script>
+<script src="config.js?v=2"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>
