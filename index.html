@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>英文文法每日十題</title>
+<title>英文文法每日練習</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 <div id="demoBar" class="demo-bar" hidden>
@@ -17,7 +17,7 @@
 </div>
 
 <header class="top">
-  <div class="brand"><span class="logo">Aa</span><span id="appTitle">英文文法每日十題</span></div>
+  <div class="brand"><span class="logo">Aa</span><span id="appTitle">英文文法每日練習</span></div>
   <div class="who" id="who" hidden>
     <span id="whoName"></span>
     <span class="points-pill">⭐ <b id="pointsNum">0</b> 點</span>
@@ -29,8 +29,8 @@
   <!-- 登入 -->
   <section id="vLogin" class="view">
     <div class="card login-card">
-      <h1>每天十題，<br>文法穩穩進步</h1>
-      <p class="muted">先讀文法說明，再練 10 題。答對一題得 1 點，答錯的題目會收進錯題本，週末再來訂正。</p>
+      <h1>每天 20 題，<br>文法穩穩進步</h1>
+      <p class="muted">先讀文法說明，再練 20 題。答對一題得 1 點；答錯的題目會收進錯題本，隔天就能訂正。想多練也可以先做後面幾天的題目！</p>
       <form id="loginForm">
         <label>學號<input id="inSid" inputmode="numeric" autocomplete="off" required></label>
         <label>姓名<input id="inName" autocomplete="off" required></label>
@@ -55,7 +55,7 @@
       <div class="cal" id="cal"></div>
       <div class="legend">
         <span><i class="dot done"></i>完成</span><span><i class="dot partial"></i>做一半</span>
-        <span><i class="dot todo"></i>待完成</span>
+        <span><i class="dot todo"></i>待完成</span><span><i class="dot ahead"></i>可以先做</span>
       </div>
     </div>
   </section>
@@ -78,7 +78,7 @@
       <div class="eyebrow" id="notesEyebrow"></div>
       <h2 id="notesTitle"></h2>
       <div id="notesBody" class="notes"></div>
-      <button class="btn primary big" id="startQuizBtn">我讀完了，開始練習 10 題 →</button>
+      <button class="btn primary big" id="startQuizBtn">我讀完了，開始練習 →</button>
     </div>
   </section>
 
@@ -125,7 +125,7 @@
   </div>
 </main>
 
-<script src="config.js?v=2"></script>
-<script src="app.js?v=2"></script>
+<script src="config.js?v=3"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

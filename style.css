@@ -244,3 +244,19 @@ button.day:not(:disabled):hover { filter: brightness(.96); }
   .cal-head, .cal { gap: 4px; }
   .day small { font-size: 9px; }
 }
+
+/* v3：克漏字、考點與盲點、提前練習 */
+.passage { background: #f7f5ef; border: 1px solid #e6e0d0; border-radius: 10px; padding: 12px 14px; margin: 0 0 12px; font-size: 15px; line-height: 1.75; max-height: 46vh; overflow-y: auto; }
+.gap { display: inline-block; min-width: 1.8em; padding: 0 4px; margin: 0 2px; border-bottom: 2px solid #b9b2a0; color: #8c8572; font-size: 12px; text-align: center; line-height: 1.4; }
+.gap.cur { background: #ffe9a8; border-bottom-color: #d99a00; color: #7a5200; font-weight: 700; font-size: 14px; }
+.insight { margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: #f3f0fb; font-size: 14px; line-height: 1.6; }
+.insight > div + div { margin-top: 4px; }
+.insight .maybe { color: #9b2c2c; }
+.insight .tipline { color: #4a4560; }
+.kp-tag { font-size: 12px; color: #5b4a99; margin-bottom: 4px; }
+.notes h4 { margin: 18px 0 6px; color: #9b2c2c; }
+.trap-list { background: #fff6f4; border: 1px solid #f3d3cc; border-radius: 10px; padding: 10px 14px 10px 30px; margin: 0; }
+.trap-list li { margin: 4px 0; line-height: 1.6; }
+.day.ahead { background: #eef4fb; }
+.dot.ahead { background: #eef4fb; border: 1px solid #a9c2e0; }
+.status.todo + .btn-row { margin-top: 10px; }
