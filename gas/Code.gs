@@ -517,7 +517,7 @@ function summary(s) {
     fixedCount: W.filter(function (w) { return w.status === '已訂正'; }).length,
     reviewCount: cfg.reviewCount,
     doneDays: days.filter(function (d) { return d.status === 'done'; }).length,
-    student: { sid: s.sid, name: s.name }, title: cfg.title, drill: drillCounts(s.sid)
+    student: { sid: s.sid, name: s.name }, title: cfg.title, drill: drillCounts(s.sid, days)
   };
 }
 
@@ -602,15 +602,38 @@ function buildDrill(sid, lesson, size, seed, Q) {
   picked.sort(function (a, b) { return hashNum(seed + a.q.id) - hashNum(seed + b.q.id); });
   return { list: picked, profile: prof };
 }
-function drillCounts(sid) {
+// 考前特訓解鎖：某一課「只考這一課」的每日練習全部完成才開放；兩課一起要兩課都完成
+function drillCounts(sid, days) {
   var Q = questionMap(), c = { L3: 0, L4: 0 };
   wrongItems(sid).forEach(function (w) { var q = Q[w.qid]; if (q && c[q.lesson] != null) c[q.lesson]++; });
   c.ALL = c.L3 + c.L4;
+  if (!days) days = summaryDays(sid);
+  var st = {}; days.forEach(function (d) { st[d.date] = d.status; });
+  var need = { L3: [0, 0], L4: [0, 0] };
+  schedule().forEach(function (d) {
+    var ls = {};
+    d.qids.forEach(function (id) { if (Q[id]) ls[Q[id].lesson] = 1; });
+    var keys = Object.keys(ls);
+    if (keys.length === 1 && need[keys[0]]) { need[keys[0]][1]++; if (st[d.date] === 'done') need[keys[0]][0]++; }
+  });
+  c.need = need;
+  c.unlock = { L3: need.L3[1] > 0 && need.L3[0] >= need.L3[1], L4: need.L4[1] > 0 && need.L4[0] >= need.L4[1] };
+  c.unlock.ALL = c.unlock.L3 && c.unlock.L4;
   return c;
+}
+function summaryDays(sid) {
+  var log = studentLog(sid);
+  return schedule().map(function (d) {
+    var a = log.daily[d.date] || {}, n = 0;
+    d.qids.forEach(function (id) { if (a[id]) n++; });
+    return { date: d.date, status: n >= d.qids.length ? 'done' : 'todo' };
+  });
 }
 
 API.getDrill = function (p) {
   var s = auth(p), Q = questionMap(), K = kpMap(), lesson = lessonKey(p.lesson);
+  var dc = drillCounts(s.sid);
+  if (!dc.unlock[lesson]) throw new Error(lesson === 'ALL' ? '第三課和第四課的每日練習都完成後，才能解鎖兩課一起的考前特訓' : LESSON_NAME[lesson] + '的每日練習全部完成後，才能解鎖考前特訓（目前 ' + dc.need[lesson][0] + ' / ' + dc.need[lesson][1] + ' 天）');
   var d = buildDrill(s.sid, lesson, 20, s.sid + '|' + today() + '|' + lesson, Q);
   if (!d.list.length) throw new Error(LESSON_NAME[lesson] + '還沒有錯過的題目，不用特訓喔！');
   var units = [];

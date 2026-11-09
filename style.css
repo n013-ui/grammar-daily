@@ -267,3 +267,5 @@ button.day:not(:disabled):hover { filter: brightness(.96); }
 .drill-btns .btn.drill small { font-size: 12px; font-weight: 500; color: #b45309; }
 .drill-btns .btn.drill:disabled { opacity: .45; cursor: not-allowed; }
 .drill-btns { margin-top: 10px; } .drill-btns .btn.big { flex: 1 1 110px; }
+.drill-btns .btn.drill.locked { background: #f4f1ea; border-color: #ddd6c8; color: #8c8572; } .drill-btns .btn.drill.locked small { color: #8c8572; }
+.drill-btns .btn.drill.locked:disabled { opacity: 1; }

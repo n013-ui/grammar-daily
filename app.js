@@ -164,12 +164,15 @@
     // 考前特訓
     var dc = res.drill || { L3: 0, L4: 0, ALL: 0 };
     var g = '<h3>🎯 考前特訓</h3><p class="muted" style="margin:4px 0 0">把這一課<b>曾經錯過的題目</b>（包括已經訂正的）再練一遍，加上同觀念的其他題目。錯越多的觀念出越多題。不計分，適合段考前衝刺。</p>';
-    if (dc.ALL) {
-      g += '<div class="btn-row drill-btns">' + [["L3", "第三課"], ["L4", "第四課"], ["ALL", "兩課一起"]].map(function (x) {
-        return '<button class="btn drill big" data-drill="' + x[0] + '"' + (dc[x[0]] ? "" : " disabled") + ">" + x[1] +
-          '<small>錯過 ' + dc[x[0]] + " 題</small></button>";
-      }).join("") + "</div>";
-    } else g += '<p class="muted" style="margin:8px 0 0">還沒有錯過的題目。先做每日練習，答錯的題目會自動收進來。</p>';
+    var un = dc.unlock || {}, nd = dc.need || {};
+    g += '<div class="btn-row drill-btns">' + [["L3", "第三課"], ["L4", "第四課"], ["ALL", "兩課一起"]].map(function (x) {
+      var k = x[0], open = un[k] && dc[k] > 0, sub;
+      if (!un[k]) sub = k === "ALL" ? "🔒 兩課都完成後解鎖" : "🔒 完成 " + (nd[k] ? nd[k][0] + " / " + nd[k][1] : "") + " 天後解鎖";
+      else sub = dc[k] ? "錯過 " + dc[k] + " 題" : "沒有錯題 👍";
+      return '<button class="btn drill big' + (un[k] ? "" : " locked") + '" data-drill="' + k + '"' + (open ? "" : " disabled") + ">" + (un[k] ? "" : "🔒 ") + x[1] +
+        "<small>" + sub + "</small></button>";
+    }).join("") + "</div>";
+    g += '<p class="muted" style="margin:8px 0 0;font-size:13px">要先把這一課的每日練習全部做完，才能解鎖那一課的考前特訓。</p>';
     $("drillCard").innerHTML = g;
 
     // 補做
