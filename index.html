@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>英文文法每日十題</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="demoBar" class="demo-bar" hidden>
+  <span>🔧 試看模式（資料只存在這台電腦）</span>
+  <label>模擬日期 <input type="date" id="demoDate"></label>
+  <button id="demoReset" class="link">清除作答紀錄</button>
+</div>
+
+<header class="top">
+  <div class="brand"><span class="logo">Aa</span><span id="appTitle">英文文法每日十題</span></div>
+  <div class="who" id="who" hidden>
+    <span id="whoName"></span>
+    <span class="points-pill">⭐ <b id="pointsNum">0</b> 點</span>
+    <button class="link" id="logoutBtn">登出</button>
+  </div>
+</header>
+
+<main id="app">
+  <!-- 登入 -->
+  <section id="vLogin" class="view">
+    <div class="card login-card">
+      <h1>每天十題，<br>文法穩穩進步</h1>
+      <p class="muted">先讀文法說明，再練 10 題。答對一題得 1 點，答錯的題目會收進錯題本，週末再來訂正。</p>
+      <form id="loginForm">
+        <label>學號<input id="inSid" inputmode="numeric" autocomplete="off" required></label>
+        <label>姓名<input id="inName" autocomplete="off" required></label>
+        <button class="btn primary big" type="submit">進入練習</button>
+        <p class="err" id="loginErr"></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- 首頁 -->
+  <section id="vHome" class="view" hidden>
+    <div id="todayCard" class="card today-card"></div>
+    <div class="grid2">
+      <div class="card stat"><div class="stat-num" id="statDone">0</div><div class="muted">已完成天數</div></div>
+      <div class="card stat"><div class="stat-num" id="statWrong">0</div><div class="muted">錯題待訂正</div></div>
+    </div>
+    <div id="makeupCard" class="card" hidden></div>
+    <div class="card">
+      <h3 class="card-title">11 月練習月曆</h3>
+      <div class="cal-head"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div>
+      <div class="cal" id="cal"></div>
+      <div class="legend">
+        <span><i class="dot done"></i>完成</span><span><i class="dot partial"></i>做一半</span>
+        <span><i class="dot todo"></i>待完成</span><span><i class="dot review"></i>錯題回收日</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 文法說明 -->
+  <section id="vNotes" class="view" hidden>
+    <button class="link back" data-go="home">← 回首頁</button>
+    <div class="card">
+      <div class="eyebrow" id="notesEyebrow"></div>
+      <h2 id="notesTitle"></h2>
+      <div id="notesBody" class="notes"></div>
+      <button class="btn primary big" id="startQuizBtn">我讀完了，開始練習 10 題 →</button>
+    </div>
+  </section>
+
+  <!-- 作答 -->
+  <section id="vQuiz" class="view" hidden>
+    <div class="quiz-top">
+      <button class="link back" id="quizBack">← 先離開（進度會保留）</button>
+      <span class="quiz-count" id="quizCount"></span>
+    </div>
+    <div class="progress"><div id="progressBar"></div></div>
+    <div class="card qcard">
+      <div class="qmeta"><span id="qSrc" class="tag"></span><button class="link" id="peekNotes">📖 看文法說明</button></div>
+      <div class="qtext" id="qText"></div>
+      <div class="opts" id="qOpts"></div>
+      <div id="qFeedback" class="feedback" hidden></div>
+      <button class="btn primary big" id="nextBtn" hidden>下一題 →</button>
+    </div>
+  </section>
+
+  <!-- 結果 -->
+  <section id="vResult" class="view" hidden>
+    <div class="card result-card">
+      <div class="eyebrow" id="resEyebrow"></div>
+      <div class="score-ring"><b id="resScore">0</b><span>/ <i id="resTotal">10</i></span></div>
+      <p id="resMsg" class="res-msg"></p>
+      <p class="muted" id="resPoints"></p>
+      <button class="btn primary big" data-go="home">回首頁</button>
+    </div>
+    <div class="card">
+      <h3 class="card-title">今天的題目回顧</h3>
+      <div id="resList"></div>
+    </div>
+  </section>
+
+  <div id="loading" class="loading" hidden><div class="spinner"></div></div>
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- 作答中查看文法說明 -->
+  <div id="notesModal" class="modal" hidden>
+    <div class="modal-box">
+      <button class="link modal-close" id="closeNotes">✕ 關閉</button>
+      <div id="modalBody" class="notes"></div>
+    </div>
+  </div>
+</main>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

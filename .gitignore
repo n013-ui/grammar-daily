@@ -1,0 +1,6 @@
+# 含答案的檔案不放上公開 repo
+data.js
+gas/Seed.gs
+tools/
+*.docx
+*.pdf
