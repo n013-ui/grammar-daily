@@ -260,6 +260,16 @@ function refreshStudent(s) {
   return sum;
 }
 
+// 老師用：用 Seed.gs 的進度覆蓋「進度」工作表（手動執行；作答紀錄不受影響）
+function resetSchedule() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(SH.SCHED);
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 4).clearContent();
+  sh.getRange('A:A').setNumberFormat('@');
+  sh.getRange(2, 1, SEED.schedule.length, 4).setValues(SEED.schedule.map(function (x) {
+    return [x.date, x.title, x.units.join(','), x.qids.join(',')];
+  }));
+}
+
 // 老師用：重新計算所有學生的點數（手動執行）
 function refreshAllStudents() {
   rows(SH.STU).forEach(function (r) { if (str(r[0])) refreshStudent({ sid: str(r[0]), name: str(r[1]) }); });
