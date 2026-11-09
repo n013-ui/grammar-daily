@@ -22,7 +22,7 @@
 html, body { margin: 0; }
 body {
   background: var(--bg); color: var(--ink);
-  font-family: "Noto Sans TC", system-ui, -apple-system, "Microsoft JhengHei", sans-serif;
+  font-family: "Noto Sans", "Noto Sans TC", system-ui, -apple-system, "Microsoft JhengHei", sans-serif;
   font-size: 16px; line-height: 1.6;
   -webkit-text-size-adjust: 100%;
 }
