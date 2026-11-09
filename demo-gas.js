@@ -15,7 +15,7 @@ window.DemoGas = (function () {
         setValues: function (v) { v.forEach(function (row, i) { row.forEach(function (x, j) { set(r + i, c + j, x); }); }); return o; },
         setValue: function (x) { set(r, c, x); return o; },
         clearContent: function () { for (var i = 0; i < nr; i++) for (var j = 0; j < nc; j++) if (sh.data[r + i - 1]) set(r + i, c + j, ""); return o; },
-        setNumberFormat: function () { return o; }, setFontWeight: function () { return o; }, setBackground: function () { return o; }
+        setNumberFormat: function () { return o; }, setFontWeight: function () { return o; }, setBackground: function () { return o; }, setNote: function () { return o; }
       };
       return o;
     }

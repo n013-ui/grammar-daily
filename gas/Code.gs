@@ -15,7 +15,7 @@ HEAD[SH.UNIT]  = ['單元ID', '課次', '標題', '說明HTML'];
 HEAD[SH.Q]     = ['題目ID', '課次', '單元', '出處', '題目', 'A', 'B', 'C', 'D', '答案', '解析', '考點', '選項盲點', '文章'];
 HEAD[SH.VAR]   = ['原題ID', '序號', '題目', 'A', 'B', 'C', 'D', '答案', '解析'];
 HEAD[SH.SCHED] = ['日期', '標題', '文法單元', '題目ID'];
-HEAD[SH.STU]   = ['學號', '姓名', '班級', '座號', '總點數', '完成天數', '錯題待訂正', '最後作答'];
+HEAD[SH.STU]   = ['登入名稱', '顯示名稱', '班級', '座號', '總點數', '完成天數', '錯題待訂正', '最後作答'];
 HEAD[SH.LOG]   = ['時間', '學號', '姓名', '模式', '練習日期', '題目ID', '選答', '對錯', '得分', '選項內容', '正確答案', '考點', '盲點'];
 HEAD[SH.WRONG] = ['學號', '題目ID', '錯誤次數', '狀態', '加入時間', '最後更新', '回收練習次數', '回收紀錄'];
 HEAD[SH.KP]    = ['考點ID', '課次', '單元', '考點', '盲點提醒'];
@@ -52,7 +52,13 @@ function setupSheets() {
     sh.getRange(1, 1, 1, h.length).setValues([h]).setFontWeight('bold').setBackground('#e3f1ef');
     sh.setFrozenRows(1);
   });
-  ss.getSheetByName(SH.STU).getRange('A:A').setNumberFormat('@');
+  var stu = ss.getSheetByName(SH.STU);
+  stu.getRange('A:A').setNumberFormat('@');
+  stu.getRange(1, 1).setNote('【新增帳號】在下面空白列的 A 欄輸入登入名稱（例如 queena），就能用這個名稱登入，不需要密碼，大小寫不拘。\n' +
+    'B 欄「顯示名稱」是網頁上看到的名字，可以不填。\n' +
+    'E～H 欄（點數、完成天數…）由系統自動填，請不要手動修改。\n' +
+    '刪掉一列＝取消這個帳號（作答紀錄會留著）。');
+  stu.getRange(1, 5, 1, 4).setBackground('#eeeeee');
   ss.getSheetByName(SH.SCHED).getRange('A:A').setNumberFormat('@');
   ss.getSheetByName(SH.LOG).getRange('B:B').setNumberFormat('@');
   ss.getSheetByName(SH.LOG).getRange('E:E').setNumberFormat('@');
