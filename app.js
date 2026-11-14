@@ -163,7 +163,7 @@
 
     // 考前特訓
     var dc = res.drill || { L3: 0, L4: 0, ALL: 0 };
-    var g = '<h3>🎯 考前特訓</h3><p class="muted" style="margin:4px 0 0">把這一課<b>曾經錯過的題目</b>（包括已經訂正的）再練一遍，加上同觀念的其他題目。錯越多的觀念出越多題。不計分，適合段考前衝刺。</p>';
+    var g = '<h3>🎯 考前特訓</h3><p class="muted" style="margin:4px 0 0">把這一課<b>曾經錯過的題目</b>（包括已經訂正的）再練一遍，加上同觀念的其他題目。錯越多的觀念出越多題。每一題第一次答對 +1 點，適合段考前衝刺。</p>';
     var un = dc.unlock || {}, nd = dc.need || {};
     g += '<div class="btn-row drill-btns">' + [["L3", "第三課"], ["L4", "第四課"], ["ALL", "兩課一起"]].map(function (x) {
       var k = x[0], open = un[k] && dc[k] > 0, sub;
@@ -342,7 +342,7 @@
     if (rv || dr) payload.choiceText = q.opts["ABCD".indexOf(choice)];
     Api.call("answer", payload).then(function (res) {
       var ansL = res.ansText != null ? "ABCD"[q.opts.indexOf(res.ansText)] : res.ans;
-      quiz.results[q.id] = { choice: choice, correct: res.correct, ans: ansL, exp: res.exp, kpName: res.kpName, kpTip: res.kpTip, trap: res.trap };
+      quiz.results[q.id] = { choice: choice, correct: res.correct, gained: res.gained, ans: ansL, exp: res.exp, kpName: res.kpName, kpTip: res.kpTip, trap: res.trap };
       b.style.borderColor = "";
       all.forEach(function (x) {
         if (x.dataset.c === ansL) x.classList.add("correct");
@@ -354,7 +354,7 @@
       if (res.gained) head += "　+" + res.gained + " 點";
       var sub = "";
       if (!res.correct && !rv) sub = "已收進錯題本，明天起可以到錯題回收區練習";
-      if (dr) sub = res.correct ? "考前特訓不計分，觀念有記住就好 👍" : "已記到錯題本，考前再看一次詳解";
+      if (dr) sub = res.correct ? (res.gained ? "這題第一次在考前特訓答對，+1 點！" : "這題之前在考前特訓答對過，這次不再加分，觀念有記住就好 👍") : "已記到錯題本，考前再看一次詳解";
       if (!res.correct && rv) sub = "這題已錯 " + res.wrongCount + " 次，會留在錯題本，明天再換題練一次";
       if (res.correct && rv) sub = "已從錯題本移除。回收紀錄：" + res.hist;
       fb.innerHTML = '<div class="fb-head">' + head + (sub ? '<div style="font-size:13px;font-weight:500;color:var(--muted)">' + sub + "</div>" : "") +
@@ -395,7 +395,7 @@
     var r = score / total;
     $("resMsg").textContent = r === 1 ? "全對！太強了 🎉" : r >= .8 ? "很棒，差一點就全對！" : r >= .6 ? "不錯，看看錯的題目解析吧" : "再接再厲，先把解析看懂 💪";
     $("resPoints").textContent = quiz.mode === "practice" ? "再練一次不計分，錯的題目一樣會收進錯題本。"
-      : dr ? "考前特訓不計分。錯的題目已記到錯題本，把下面的詳解看懂再去考試！"
+      : dr ? "考前特訓每一題第一次答對 +1 點（這次獲得 " + quiz.questions.reduce(function (n, q) { var x = quiz.results[q.id]; return n + (x && x.gained ? x.gained : 0); }, 0) + " 點）。錯的題目已記到錯題本，把下面的詳解看懂再去考試！"
       : rv ? "訂正成功 " + score + " 題，獲得 " + score + " 點。又錯的題目明天會再換題練一次。"
       : viewOnly ? "這一天答對 " + score + " 題，獲得 " + score + " 點。" : "今天獲得 " + score + " 點！答錯的題目明天起可以到錯題回收區練習。";
     $("resList").innerHTML = quiz.questions.map(function (q, i) {

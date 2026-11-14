@@ -650,23 +650,27 @@ API.getDrill = function (p) {
   };
 };
 
-// 考前特訓作答：不計分；答錯一樣收進錯題本
+// 考前特訓作答：每一題在考前特訓「第一次答對」+1 點（同一題之後再答對不加分）；答錯一樣收進錯題本
 function answerDrill(s, q, K, p) {
   var ss = SpreadsheetApp.getActive(), now = new Date();
   var right = q.opts['ABCD'.indexOf(q.ans)], choice = String(p.choiceText || '');
   var ci = q.opts.indexOf(choice), letter = ci >= 0 ? 'ABCD'.charAt(ci) : '';
-  var correct = choice === right, trap = correct ? '' : trapOf(q.traps, letter);
+  var correct = choice === right, trap = correct ? '' : trapOf(q.traps, letter), gained = 0;
+  if (correct) {
+    var before = rows(SH.LOG).some(function (r) { return str(r[1]) === s.sid && str(r[3]) === 'drill' && str(r[5]) === q.id && Number(r[8]) > 0; });
+    gained = before ? 0 : 1;
+  }
   if (!correct) {
     var wsh = ss.getSheetByName(SH.WRONG), wv = wsh.getDataRange().getValues(), wrow = -1;
     for (var i = 1; i < wv.length; i++) if (str(wv[i][0]) === s.sid && str(wv[i][1]) === q.id && str(wv[i][3]) === '待訂正') { wrow = i + 1; break; }
     if (wrow > 0) { wsh.getRange(wrow, 3).setValue((Number(wv[wrow - 1][2]) || 1) + 1); wsh.getRange(wrow, 6).setValue(now); }
     else wsh.appendRow([s.sid, q.id, 1, '待訂正', now, now, 0, '']);
   }
-  ss.getSheetByName(SH.LOG).appendRow([now, s.sid, s.name, 'drill', '', q.id, letter, correct ? '對' : '錯', 0, choice, right, q.kp, trap]);
+  ss.getSheetByName(SH.LOG).appendRow([now, s.sid, s.name, 'drill', '', q.id, letter, correct ? '對' : '錯', gained, choice, right, q.kp, trap]);
   recordAnalysis(s, q, letter, correct, trap, q.id, choice);
   SpreadsheetApp.flush();
   var sum = refreshStudent(s), k = K[q.kp] || {};
-  return { ok: true, correct: correct, ansText: right, exp: q.exp, gained: 0, points: sum.points, kpName: k.name || '', kpTip: k.tip || '', trap: trap };
+  return { ok: true, correct: correct, ansText: right, exp: q.exp, gained: gained, repeatCorrect: correct && !gained, points: sum.points, kpName: k.name || '', kpTip: k.tip || '', trap: trap };
 }
 
 // ---------- 老師工具：在「老師工具」工作表選學生、課次，勾選「產生」 ----------
