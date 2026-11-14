@@ -76,7 +76,7 @@ function addMissingQuestions() {
   var add = SEED.questions.filter(function (x) { return !have[x.id]; }).map(function (x) {
     return qRow(x);
   });
-  if (add.length) sh.getRange(sh.getLastRow() + 1, 1, add.length, HEAD[SH.Q].length).setValues(add);
+  if (add.length) sh.getRange(sh.getLastRow() + 1, 1, add.length, HEAD[SH.Q].length).setNumberFormat('@').setValues(add);
   return add.length;
 }
 function qRow(x) {
@@ -90,7 +90,8 @@ function reloadFromSeed() {
   function overwrite(name, data) {
     var sh = ss.getSheetByName(name), w = HEAD[name].length;
     if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, Math.max(w, sh.getLastColumn())).clearContent();
-    if (data.length) sh.getRange(2, 1, data.length, w).setValues(data);
+    // 題目、選項一律存成純文字，避免試算表把「6:10」這類內容自動變成時間或數字
+    if (data.length) sh.getRange(2, 1, data.length, w).setNumberFormat('@').setValues(data);
   }
   overwrite(SH.Q, S.questions.map(qRow));
   var vr = [];
@@ -114,7 +115,7 @@ function addMissingVariants() {
       if (!have[id + '#' + (i + 1)]) add.push([id, i + 1, v[0], v[1][0], v[1][1], v[1][2], v[1][3], v[2], v[3]]);
     });
   });
-  if (add.length) sh.getRange(sh.getLastRow() + 1, 1, add.length, 9).setValues(add);
+  if (add.length) sh.getRange(sh.getLastRow() + 1, 1, add.length, 9).setNumberFormat('@').setValues(add);
   return add.length;
 }
 
